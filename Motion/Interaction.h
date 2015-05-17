@@ -1,7 +1,9 @@
 /*
-	Interaction.h - 
+	Matthew Fink, MEC 572, Spring 2015
+	Adapted from code provided by Prof. Anurag Purwar
+
+	Interaction.h - Defines the mouse and keyboard interactions with the GLUT window.
 */
-// mouse and keyboard controller functions and variables are put together here
 
 #pragma once
 

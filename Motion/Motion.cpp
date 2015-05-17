@@ -1,3 +1,7 @@
+/*
+	Motion.cpp - See Motion.h for description.
+*/
+
 #include <iostream>
 #include <fstream>
 
@@ -5,6 +9,7 @@
 #include "freeglut\freeglut.h"
 
 using arma::zeros;
+using arma::cx_mat;
 
 
 Motion::Motion() {
@@ -12,7 +17,7 @@ Motion::Motion() {
 	fileName = "input.txt";
 	if (readControlPositions()) {
 		for (int i = 0; i < controlPositions.size(); i++) {
-			variationalWeights.push_back(50.0f);
+			variationalWeights.push_back(10.0f);
 		}
 		initFeaturePoints();
 	}
@@ -176,20 +181,6 @@ void Motion::updateBezierMotion() {
 }
 
 void Motion::updateVariationalCurve() {
-	/*vector<vec> points;
-	for (DualQuaternion dq : controlPositions) {
-		Quaternion Q = dq.GetReal();
-		//cout<<"Q="<<Q<<endl;
-		Quaternion R = dq.GetDual();
-		//cout<<"R="<<R<<endl;
-		Quaternion T = (R*Q.Conjugate() - Q*R.Conjugate()) / Q.Modulus();
-		vec v(3);
-		for (int i = 0; i < 3; i++) {
-			v(i) = T.q[i];
-			
-		}
-		points.push_back(v);
-	}*/
 	if (featurePoints.empty()) return;
 
 	// Rearrange the positions into sets of homologous points
@@ -217,7 +208,136 @@ void Motion::updateVariationalCurve() {
 }
 
 void Motion::updateVariationalMotion() {
+	variationalPositions.clear();
 
+	// Rearrange the feature curves into sets of positions
+	vector<vector<vec>> positions;
+	for (int i = 0; i < variationalCurves[0].size(); i++) {
+		vector<vec> position;
+		for (int j = 0; j < variationalCurves.size(); j++) {
+			position.push_back(variationalCurves[j][i]);
+		}
+		positions.push_back(position);
+	}
+
+	
+	// Begin with the first position, find the barycenter 
+	vector<vec> X = featurePoints[0];
+	vec xBar = barycenter(X);
+
+	// Create a local coordinate system
+	vector<vec> Xprime;
+	for (int i = 0; i < X.size(); i++) {
+		vec v = X[i] - xBar;
+		Xprime.push_back(v);
+	}
+
+	// Calculate the special points
+	list<cx_vec> specialX = calculateSpecialPoints(X);
+	vector<cx_vec> specialXvec;
+
+	// Convert the special points to barycentric coords w.r.t X ??
+	cx_vec cxXBar(xBar, zeros<vec>(3));
+	for (int i = 0; i < specialX.size(); i++) {
+		cx_vec v = specialX.front();
+		specialX.pop_front();
+		v -= cxXBar;
+		specialXvec.push_back(v);
+	}
+
+	// For every position after the first
+	for (int i = 0; i < positions.size(); i++) {
+		// Get the position, find the barycenter.
+		vector<vec> Y = positions[i]; 
+		vec yBar = barycenter(Y);
+		
+		// Try just getting a translation??
+		vec tra = yBar - xBar;
+
+		Quaternion qQ = controlPositions[0].GetReal();
+		//cout<<"Q="<<Q<<endl;
+		Quaternion qR = controlPositions[0].GetDual();
+		//cout<<"R="<<R<<endl;
+		Quaternion qT = (qR*qQ.Conjugate() - qQ*qR.Conjugate()) / qQ.Modulus(); // recover translation component
+		
+		vec tra2(3);
+		for (int i = 0; i < 3; i++) {
+			tra2(i) = qT.q[i];
+		}
+		// Translation from control position 0 to the current point
+		double r[4] = { 0.0, 0.0, 0.0, 1.0 };
+		Quaternion real(r);
+		double tr[3] = { tra(0) + tra2(0), tra(1) + tra2(1), tra(2) + tra2(2) };
+		hPoint trans(tr);
+		DualQuaternion dq(real, trans);
+
+		// Create a local coordinate system
+		vector<vec> Yprime;
+		for (int i = 0; i < Y.size(); i++) {
+			vec v = Y[i] - yBar;
+			Yprime.push_back(v);
+		}
+
+		// Begin calculating the rotation matrix R
+		double Sxx = S(0, 0, Xprime, Yprime);
+		double Sxy = S(0, 1, Xprime, Yprime);
+		double Sxz = S(0, 2, Xprime, Yprime);
+		double Syx = S(1, 0, Xprime, Yprime);
+		double Syy = S(1, 1, Xprime, Yprime);
+		double Syz = S(1, 2, Xprime, Yprime);
+		double Szx = S(2, 0, Xprime, Yprime);
+		double Szy = S(2, 1, Xprime, Yprime);
+		double Szz = S(2, 2, Xprime, Yprime);
+
+		// M is this (symmetric) matrix
+		mat M = zeros(4, 4);
+		M << Sxx + Syy + Szz << Syz - Szy << Szx - Sxz << Sxy - Syz << arma::endr
+			<< Syz - Szy << Sxx - Syy - Szz << Sxy + Syx << Szx + Sxz << arma::endr
+			<< Szx - Sxz << Sxy + Syx << -Sxx + Syy - Szz << Syz + Szy << arma::endr
+			<< Sxy - Syz << Szx + Sxz << Syz + Szy << -Sxx - Syy + Szz;
+
+		// Find the maximal eigenvalue and corresponding unit eigenvector
+		vec eigVals;
+		mat eigVecs;
+		eig_sym(eigVals, eigVecs, M);
+
+		// A is the rotation unit quaternion
+		vec a = eigVecs.col(3);
+
+		// Create the rotation matrix R
+		mat R = zeros(3, 3);
+		double a0 = a(0);
+		double a1 = a(1);
+		double a2 = a(2);
+		double a3 = a(3);
+		R << a0*a0 + a1*a1 - a2*a2 - a3*a3 << 2 * (a1*a2 + a0*a3) << 2 * (a1*a3 - a0*a2) << arma::endr
+			<< 2 * (a1*a2 - a0*a3) << a0*a0 - a1*a1 + a2*a2 - a3*a3 << 2 * (a2*a3 + a0*a1) << arma::endr
+			<< 2 * (a1*a3 + a0*a2) << 2 * (a2*a3 - a0*a1) << a0*a0 - a1*a1 - a2*a2 - a3*a3;
+
+		// Get the translation vector from x to y
+		vec t = yBar - R * xBar;
+		
+		// Make a translation matrix
+		mat translation = zeros(4, 4);
+		translation << 1 << 0 << 0 << t(0) << arma::endr
+			<< 0 << 1 << 0 << t(1) << arma::endr
+			<< 0 << 0 << 1 << t(2) << arma::endr
+			<< 0 << 0 << 0 << 1;
+		/*
+		// Use the rotation quaternion and the translation vectoro to build a Dual Quaternion
+		double r[4] = { a(0), a(1), a(2), a(3) };
+		//double r[4] = { 0.0, 0.0, 0.0, 1.0 };
+		Quaternion real(r);
+		double tr[3] = { t(0), t(1), t(2) };
+		hPoint trans(tr);
+		DualQuaternion dq(real, trans);
+
+		DualQuaternion dq2 = controlPositions[0] * dq;
+		// Convert this to an hMatrix and add it to the list
+		hMatrix hm1 = dq.dualQuaternionToHomogeneousMatrix();*/
+		variationalPositions.push_back(dq.dualQuaternionToHomogeneousMatrix().transpose());
+	}
+	
 }
 
 
@@ -238,7 +358,7 @@ void Motion::drawControlPositions() {
 
 		glPushMatrix();
 		glMultMatrixd(MatrixforOpenGLStack);
-		glutWireTeapot(0.15);
+		glutSolidTeapot(0.15);
 		glPopMatrix();
 	}
 	glutPostRedisplay();
@@ -280,7 +400,7 @@ void Motion::drawBezierMotion() {
 }
 
 void Motion::drawVariationalCurve() {
-	glLineWidth(1.5f);
+	glLineWidth(1.0f);
 	glColor3f(1.0f, 1.0f, 1.0f);
 	for (vector<vec> curve : variationalCurves) {
 		glBegin(GL_LINE_STRIP);
@@ -292,6 +412,18 @@ void Motion::drawVariationalCurve() {
 }
 
 void Motion::drawVariationalMotion() {
+	for (hMatrix interp : variationalPositions) {
+		// Convert to OpenGL matrix
+		double oglMatrix[16];
+		for (int i1 = 0; i1<4; i1++)
+			for (int i2 = 0; i2<4; i2++)
+				oglMatrix[4 * i1 + i2] = interp.m[i1][i2];
+
+		glPushMatrix();
+		glMultMatrixd(oglMatrix);
+		glutSolidTeapot(0.15);
+		glPopMatrix();
+	}
 
 }
 
@@ -368,6 +500,10 @@ bool Motion::setFileName(string file) {
 		fileName = file;
 		if (readControlPositions()) {
 			initFeaturePoints();
+			variationalWeights.clear();
+			for (int i = 0; i < controlPositions.size(); i++) {
+				variationalWeights.push_back(10.0f);
+			}
 			return true;
 		}
 	}
@@ -378,6 +514,7 @@ void Motion::updateAll() {
 	updateScrewMotion();
 	updateBezierMotion();
 	updateVariationalCurve();
+	updateVariationalMotion();
 	updateBezierMotion();
 }
 
@@ -760,6 +897,18 @@ int Motion::ipow(int base, int exp) {
 */
 double Motion::S(int x, int y, const vector<vec>& X, const vector<vec>& Y) {
 	double s = 0.0f;
+	for (int i = 0; i < X.size(); i++) {
+		s += (X[i](x) * Y[i](y));
+	}
+	return s;
+
+}
+
+/*
+	Compute the S_,_ coefficients of the M matrix
+*/
+cx_double Motion::S(int x, int y, const vector<cx_vec>& X, const vector<cx_vec>& Y) {
+	cx_double s(0.0f, 0.0f);
 	for (int i = 0; i < X.size(); i++) {
 		s += (X[i](x) * Y[i](y));
 	}

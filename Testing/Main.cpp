@@ -43,10 +43,10 @@ int main() {
 	// Choose four affinely independent feature points from the model. 
 	// These points are arbitrary for now, but should be chosen from a model later
 	vector<vec> X;
-	X.push_back("0.0 0.0 0.0");
-	X.push_back("1.0 2.0 1.0");
-	X.push_back("2.0 1.0 2.0");
-	X.push_back("3.0 2.0 1.0");
+	X.push_back("-2.75254558 2.07396932058 0.023686791628");
+	X.push_back("-2.690721959 2.046138245 -0.04248074");
+	X.push_back("-2.796284287 2.001811598 -0.023753646");
+	X.push_back("-2.726957936 2.133636768 0.03286407022");
 
 
 	// Compute the barycenter of the feature points xBar
@@ -148,10 +148,10 @@ int main() {
 
 	// The point cloud of feature points at a different time instance
 	vector<vec> Y;
-	Y.push_back("0.3 0.5 0.1");
-	Y.push_back("1.2 0.0 0.3");
-	Y.push_back("0.2 1.0 0.1");
-	Y.push_back("0.1 0.0 1.0");
+	Y.push_back("-2.705845134 2.02359736 0.0780580898");
+	Y.push_back("-2.646712876 1.99663846284 0.0182352822");
+	Y.push_back("-2.751544218 1.95593316176 0.0335986183");
+	Y.push_back("-2.6794124268 2.0790064585 0.0863142509");
 
 	cout << "Barycenter of Y:" << endl;
 	vec yBar = barycenter(Y);
@@ -277,8 +277,8 @@ list<cx_vec> calculateSpecialPoints(const vector<vec> points) {
 		J += (v * trans(v));
 	}
 	pointsCopy.clear();
-	//cout << "Inertia Tensor:" << endl;
-	//J.print(); cout << endl;
+	cout << "Inertia Tensor:" << endl;
+	J.print(); cout << endl;
 	
 	// Find the eigenvalues and eigenvectors of the sym. matrix
 	vec eigVals;
@@ -287,11 +287,11 @@ list<cx_vec> calculateSpecialPoints(const vector<vec> points) {
 
 	cx_vec cEigVals(eigVals, zeros<vec>(3));
 
-	/*cout << "Eigenvalues:" << endl;
+	cout << "Eigenvalues:" << endl;
 	eigVals.print();
 	cout << endl << "Eigenvectors:" << endl;
 	eigVecs.print();
-	cout << endl;*/
+	cout << endl;
 
 	// Separate the eigenvectors
 	for (int i = 0; i < 3; i++) {
@@ -317,11 +317,11 @@ list<cx_vec> calculateSpecialPoints(const vector<vec> points) {
 		newPoints.pop_front();
 	}
 
-	/*cout << "Special points:" << endl;
+	cout << "Special points:" << endl;
 	for (cx_vec v : newPoints) {
 		v.print();
 		cout << endl;
-	}*/
+	}
 	return newPoints;
 
 }

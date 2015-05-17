@@ -22,16 +22,18 @@ void display();
 void updateSettings(); 
 void updateFile(int id);
 void updateWeights(int id);
-void reshape(int w, int h);
+void reshape(int w, int h); 
+void updateGUI();
+void printControls();
 
 struct Settings {
 	int screwDiv = 5;
 	int bezierDiv = 5;
-	int variationalIt = 5;
+	int variationalIt = 3;
 	int showControlPositions = true;
 	int showScrewMotion = false;
 	int showBezierMotion = false;
-	int showVariationalCurve = true;
+	int showVariationalCurve = false;
 	int showVariationalMotion = false;
 	int approximateVariational = false;
 	float variationalWeights[50];
@@ -40,7 +42,24 @@ struct Settings {
 	GLUI_String* fileName;
 };
 
+struct GUI {
+	GLUI* glui;
+	GLUI_Panel* showPanel; 
+	GLUI_Panel* divPanel;
+	GLUI_Spinner* screwDivisionsSpinner;
+	GLUI_Spinner* bezierDivisionsSpinner;
+	GLUI_Spinner* variationalIterationsSpinner;
+
+	GLUI_Panel* varPanel;
+	vector<GLUI_Spinner*> weightSpinners;
+	GLUI_Spinner* insertedWeightSpinner;
+
+	GLUI_EditText* fileText;
+	GLUI_String* fileName;
+};
+
 Settings settings;
+GUI gui;
 Motion* m;
 
 /*
@@ -64,50 +83,66 @@ int main(int argc, char** argv) {
 
 	m = new Motion();
 
-	GLUI* glui = GLUI_Master.create_glui_subwindow(win_id, GLUI_SUBWINDOW_RIGHT);
-	glui->add_statictext("Options");
-	glui->add_separator();
-	settings.fileText = glui->add_edittext("File", GLUI_EDITTEXT_TEXT, settings.fileName, 999, updateFile);
+	gui.glui = GLUI_Master.create_glui_subwindow(win_id, GLUI_SUBWINDOW_RIGHT);
+	gui.glui->add_statictext("Options");
+	gui.glui->add_separator();
+	settings.fileText = gui.glui->add_edittext("File", GLUI_EDITTEXT_TEXT, settings.fileName, 999, updateFile);
 	settings.fileText->set_text("input.txt");
 
-	GLUI_Panel* showPanel = glui->add_panel("Show");
-	glui->add_checkbox_to_panel(showPanel, "Control Positions", &settings.showControlPositions);
-	glui->add_checkbox_to_panel(showPanel, "Screw Motion", &settings.showScrewMotion);
-	glui->add_checkbox_to_panel(showPanel, "Bezier Motion", &settings.showBezierMotion);
-	glui->add_checkbox_to_panel(showPanel, "Variational Curve", &settings.showVariationalCurve);
-	glui->add_checkbox_to_panel(showPanel, "Variational Motion", &settings.showVariationalMotion);
+	gui.showPanel = gui.glui->add_panel("Show");
+	gui.glui->add_checkbox_to_panel(gui.showPanel, "Control Positions", &settings.showControlPositions);
+	gui.glui->add_checkbox_to_panel(gui.showPanel, "Screw Motion", &settings.showScrewMotion);
+	gui.glui->add_checkbox_to_panel(gui.showPanel, "Bezier Motion", &settings.showBezierMotion);
+	gui.glui->add_checkbox_to_panel(gui.showPanel, "Variational Curve", &settings.showVariationalCurve);
+	gui.glui->add_checkbox_to_panel(gui.showPanel, "Variational Motion", &settings.showVariationalMotion);
 
 
-	GLUI_Panel* divPanel = glui->add_panel("Subdivisions");
-	GLUI_Spinner* screwDivisionsSpinner = glui->add_spinner_to_panel(divPanel, "Screw", GLUI_SPINNER_INT, &settings.screwDiv);
-	screwDivisionsSpinner->set_int_limits(0, 20);
-	GLUI_Spinner* bezierDivisionsSpinner = glui->add_spinner_to_panel(divPanel, "Bezier", GLUI_SPINNER_INT, &settings.bezierDiv);
-	bezierDivisionsSpinner->set_int_limits(0, 20);
-	GLUI_Spinner* variationalIterationsSpinner = glui->add_spinner_to_panel(divPanel, "Variational", GLUI_SPINNER_INT, &settings.variationalIt);
-	variationalIterationsSpinner->set_int_limits(0, 10);
+	gui.divPanel = gui.glui->add_panel("Subdivisions");
+	gui.screwDivisionsSpinner = gui.glui->add_spinner_to_panel(gui.divPanel, "Screw", GLUI_SPINNER_INT, &settings.screwDiv);
+	gui.screwDivisionsSpinner->set_int_limits(0, 20);
+	gui.bezierDivisionsSpinner = gui.glui->add_spinner_to_panel(gui.divPanel, "Bezier", GLUI_SPINNER_INT, &settings.bezierDiv);
+	gui.bezierDivisionsSpinner->set_int_limits(0, 20);
+	gui.variationalIterationsSpinner = gui.glui->add_spinner_to_panel(gui.divPanel, "Variational", GLUI_SPINNER_INT, &settings.variationalIt);
+	gui.variationalIterationsSpinner->set_int_limits(0, 8);
 
 
-	GLUI_Panel* varPanel = glui->add_panel("Variational Settings");
-	glui->add_checkbox_to_panel(showPanel, "Approximational", &settings.approximateVariational);
+	gui.varPanel = gui.glui->add_panel("Variational Settings");
+	gui.glui->add_checkbox_to_panel(gui.varPanel, "Approximation", &settings.approximateVariational);
 
-	GLUI_Spinner* weightSpinner;
 	for (int i = 0; i < 11; i++) {
+		GLUI_Spinner* weightSpinner;
 		settings.variationalWeights[i] = 10.0f;
 		char label[10];
 		sprintf_s(label, "Weight %d", i);
-		weightSpinner = glui->add_spinner_to_panel(varPanel, label, GLUI_SPINNER_FLOAT, &settings.variationalWeights[i], i, updateWeights);
+		weightSpinner = gui.glui->add_spinner_to_panel(gui.varPanel, label, GLUI_SPINNER_FLOAT, &settings.variationalWeights[i], i, updateWeights);
 		weightSpinner->set_float_val(10.0f);
 		weightSpinner->set_float_limits(0.001, 1E8);
+		weightSpinner->set_speed(0.0000001f);
+		gui.weightSpinners.push_back(weightSpinner);
 	}
-	GLUI_Spinner* insertedWeightSpinner;
-	insertedWeightSpinner = glui->add_spinner_to_panel(varPanel, "Weight Q", GLUI_SPINNER_FLOAT, &settings.insertedWeights);
-	insertedWeightSpinner->set_float_val(10.0f);
-	insertedWeightSpinner->set_float_limits(0.001, 1E8);
+	gui.insertedWeightSpinner = gui.glui->add_spinner_to_panel(gui.varPanel, "Weight Q", GLUI_SPINNER_FLOAT, &settings.insertedWeights);
+	gui.insertedWeightSpinner->set_float_val(10.0f);
+	gui.insertedWeightSpinner->set_float_limits(0.001, 1E8);
+	gui.insertedWeightSpinner->set_speed(0.000001f);
 
+	updateGUI();
+
+	printControls();
 
 	glutMainLoop();
 
 	return 0;
+}
+
+void updateGUI() {
+	for (int i = 0; i < m->getNumControlPositions(); i++) {
+		gui.weightSpinners[i]->enable();
+		gui.weightSpinners[i]->set_float_val(10.0f);
+	}
+	for (int i = m->getNumControlPositions(); i < 11; i++) {
+		gui.weightSpinners[i]->disable();
+	}
+
 }
 
 
@@ -134,9 +169,9 @@ void init() {
 void setupLight() {
 
 	float LightAmbient[] = { 1.0f, 1.0f, 1.0f, 1.0 };
-	float LightDiffuse[] = { 0.7f, 0.7f, 0.7f, 1.0f };
+	float LightDiffuse[] = { 0.8f, 0.8f, 0.8f, 0.8f };
 	float LightSpecular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-	float LightPosition[] = { 3.0f, 3.0f, 3.0f, 1.0f };
+	float LightPosition[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	float LightPosition2[] = { -3.0f, -3.0f, 0.0f, 1.0f };
 
 	float RedSurface[] = { 1.0f, 0.0f, 0.0f, 1.0f };
@@ -146,35 +181,31 @@ void setupLight() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glShadeModel(GL_SMOOTH);
 
-	glLightfv(GL_LIGHT0, GL_AMBIENT, LightAmbient);
-	glLightfv(GL_LIGHT0, GL_DIFFUSE, LightDiffuse);
-	glLightfv(GL_LIGHT0, GL_SPECULAR, LightSpecular);
-	glLightfv(GL_LIGHT0, GL_POSITION, LightPosition);
-	glLightfv(GL_LIGHT1, GL_AMBIENT, LightAmbient);
-	glLightfv(GL_LIGHT1, GL_DIFFUSE, LightDiffuse);
-	glLightfv(GL_LIGHT1, GL_SPECULAR, LightSpecular);
-	glLightfv(GL_LIGHT1, GL_POSITION, LightPosition2);
 	glEnable(GL_LIGHTING);
 	glEnable(GL_LIGHT0);
-	//glEnable(GL_LIGHT1);
+	glLightfv(GL_LIGHT0, GL_AMBIENT, LightAmbient);
+	glLightfv(GL_LIGHT0, GL_POSITION, LightPosition);
+	glLightfv(GL_LIGHT0, GL_DIFFUSE, LightDiffuse);
+	glLightfv(GL_LIGHT0, GL_SPECULAR, LightSpecular);
+
 
 	glDepthFunc(GL_LESS);
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_NORMALIZE);
 
 	float no_mat[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-	float mat_ambient[] = { 0.7f, 0.7f, 0.7f, 1.0f };
+	float mat_ambient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
 	float mat_ambient_color[] = { 0.8f, 0.3f, 0.7f, 1.0f };
-	float mat_diffuse[] = { 0.7f, 0.7f, 0.7f, 1.0f };
+	float mat_diffuse[] = { 0.8f, 0.8f, 0.8f, 1.0f };
 
 	float mat_specular[] = { 0.7f, 0.7f, 0.7f, 1.0f };
 
 	float no_shininess[] = { 0.0 };
 	float low_shininess[] = { 5.0 };
 	float high_shininess[] = { 100.0 };
-	float mat_emission[] = { 0.2f, 0.1f, 0.1f, 0.0f };
+	float mat_emission[] = { 0.1f, 0.1f, 0.1f, 0.0f };
 
-	glMaterialfv(GL_FRONT, GL_AMBIENT, no_mat);
+	glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
 	glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
 	glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
 	glMaterialfv(GL_FRONT, GL_SHININESS, high_shininess);
@@ -194,26 +225,38 @@ void display(void) {
 	glRotated(Interaction::m_yRotate, 0.0, 1.0, 0.0);
 	glRotated(Interaction::m_zRotate, 0.0, 0.0, 1.0);
 
-	static float BROWN[3] = { 0.7f, 0.5f, 0.2f };
-	glMaterialfv(GL_FRONT, GL_DIFFUSE, BROWN);
+	static float BLUE[3] = { 0.1f, 0.1f, 1.0f };
+	static float blue_ambient[] = { 0.0f, 0.0f, 0.1f, 1.0f };
+	static float low_specular[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+	glMaterialfv(GL_FRONT, GL_AMBIENT, blue_ambient);
+	glMaterialfv(GL_FRONT, GL_SPECULAR, low_specular);
+	glMaterialfv(GL_FRONT, GL_DIFFUSE, BLUE);
 	if (settings.showControlPositions)
 		m->drawControlPositions();
 
-	static float GREY[3] = { 0.5f, 0.5f, 0.5f };
+	static float GREY[3] = { 0.2f, 0.2f, 0.2f };
+	static float mat_ambient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+	static float mat_specular[] = { 0.7f, 0.7f, 0.7f, 1.0f };
+	glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
+	glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
 	glMaterialfv(GL_FRONT, GL_DIFFUSE, GREY);
 	if (settings.showScrewMotion)
 		m->drawScrewMotion();
 
-	static float LIGHT_GREY[3] = { 0.8f, 0.8f, 0.8f };
-	glMaterialfv(GL_FRONT, GL_DIFFUSE, LIGHT_GREY);
+	static float LIGHT_GREY[3] = { 0.4f, 0.4f, 0.4f };
+	glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, LIGHT_GREY);
 	if (settings.showBezierMotion)
 		m->drawBezierMotion();
 
+	static float emission[] = { 0.3f, 0.3f, 0.3f, 0.0f };
+	glMaterialfv(GL_FRONT, GL_EMISSION, emission);
 	if (settings.showVariationalCurve)
 		m->drawVariationalCurve();
 
-	static float BLUE[3] = { 0.5f, 0.5f, 1.0f };
-	glMaterialfv(GL_FRONT, GL_DIFFUSE, BLUE);
+	static float ORANGE[3] = { 1.0f, 0.5f, 0.1f };
+	static float mat_emission[] = { 0.1f, 0.1f, 0.1f, 0.0f };
+	glMaterialfv(GL_FRONT, GL_EMISSION, mat_emission);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, ORANGE);
 	if (settings.showVariationalMotion)
 		m->drawVariationalMotion();
 
@@ -238,6 +281,7 @@ void updateFile(int id) {
 	string text = settings.fileText->get_text();
 	if (m->setFileName(text)) {
 		m->updateAll();
+		updateGUI();
 	}
 
 }
@@ -247,13 +291,30 @@ void reshape(int w, int h) {
 	glViewport(0, 0, (GLsizei)w, (GLsizei)h);
 
 	//Setup Projection: Device coordinates
-	::glMatrixMode(GL_PROJECTION);
-	::glLoadIdentity();
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
 	gluPerspective(30.0f, (double)w / (double)h, 0.1f, 1000.0f);
 
 	//Set up Modeling and Viewing transform: Get Eye coordinates
-	::glMatrixMode(GL_MODELVIEW);
-	::glLoadIdentity();
-	::glTranslatef(0.0f, 0.0f, -10.0f);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	glTranslatef(0.0f, 0.0f, -10.0f);
+
+}
+
+void printControls() {
+	cout << "Matthew Fink, MEC 572, Spring 2015" << endl;
+	cout << "Motion Design using Variational Subdivision and Registration" << endl;
+	cout << endl;
+	cout << "Based on the paper:" << endl;
+	cout << "'From curve design algorithms to the design of rigid body motions'" << endl;
+	cout << "   by Hofer et al." << endl;
+	cout << endl << endl;
+	cout << "Controls:" << endl << endl;
+	cout << "Left Mouse:  Rotate window" << endl;
+	cout << "Right Mouse: Translate window" << endl;
+	cout << "Mouse Wheel: Zoom" << endl;
+	cout << endl;
+	cout << "Q: Quit" << endl;
 
 }
