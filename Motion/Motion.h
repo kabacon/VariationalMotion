@@ -1,9 +1,10 @@
 /*
-	Matthew Fink, MEC 572, Spring 2015
+	Matthew Fink, MEC 572 Final Project, Spring 2015
 
 	Motion.h - Defines the operations for motion using several different algorithms. The 
-	main focus is motion using variational subdivision and registration. Screw motions 
-	and Bezier motion are also included, as a comparison against the variational motion.
+	main focus is motion using variational subdivision and registration. Variational 
+	subdivison can be calculated using interpolary or approximational parameters. Screw 
+	and Bezier motions are also included, as a comparison against the variational motion.
 
 */
 
@@ -31,9 +32,9 @@ private:
 	vector<hMatrix> variationalPositions;
 	vector<double> variationalWeights;
 	vector<vector<vec>> featurePoints;
+	vector<vec> baseFeaturePoints;
 	double insertedWeight;
 	string fileName;
-	//hMatrix initialRotation;
 
 	int screwDivisions;
 	int bezierDivisions;
@@ -63,13 +64,14 @@ public:
 	bool setFileName(string file);
 	void updateAll();
 
+	// Inlined accessor
 	int getNumControlPositions() { return controlPositions.size(); }
 
 private:
 	bool readControlPositions();
 	void initFeaturePoints(); 
-	DualQuaternion deCasteljau(double t);
 
+	DualQuaternion deCasteljau(double t);
 	vec barycenter(const vector<vec> points);
 
 	// Helper methods for variational subdivision

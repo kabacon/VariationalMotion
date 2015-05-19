@@ -9,9 +9,11 @@
 #include "freeglut\freeglut.h"
 
 using arma::zeros;
-using arma::cx_mat;
 
-
+/*
+	Constructor - Load the control positions from text file, initialize the 
+	feature points, and update the various curves and motions
+*/
 Motion::Motion() {
 	// Load the control positions from a text file.
 	fileName = "input.txt";
@@ -28,6 +30,9 @@ Motion::Motion() {
 	updateVariationalMotion();
 }
 
+/*
+	Read the control positions from a text file and create a vector of DualQuaternions
+*/
 bool Motion::readControlPositions() {
 
 	ifstream inFile(fileName, ios::in);
@@ -66,15 +71,21 @@ bool Motion::readControlPositions() {
 }
 
 
+/*
+	Use the control position DualQuaternions to find the position of the
+	four feature points at each time instance.
+*/
 void Motion::initFeaturePoints() {
 
 	featurePoints.clear();
-	// These feature points are chosen from freeglut_teapot_data.h
-	// Randomly selected and assumed to be affinely independent
-	vec v1("2.1 3.6 0.0 1.0");
-	vec v2("1.561 0.1424 1.561 1.0");
-	vec v3("-2.006 3.711 0.8532 1.0");
-	vec v4("5.001 3.711 0.1687 1.0");
+	/*vec v1("2.1 3.6 0.0 1.0");			// These are vertices chosen from
+	vec v2("1.561 0.1424 1.561 1.0");		// freeglut_teapot_data.h, but it
+	vec v3("-2.006 3.711 0.8532 1.0");		// became easier to use other 
+	vec v4("5.001 3.711 0.1687 1.0");*/		// feature points
+	vec v1("1.0 0.0 0.0 1.0");
+	vec v2("0.0 1.0 0.0 1.0");
+	vec v3("0.0 0.0 1.0 1.0");
+	vec v4("-1.0 -1.0 -1.0 1.0");
 
 	vector<vec> base;
 	base.push_back(v1);
@@ -92,9 +103,9 @@ void Motion::initFeaturePoints() {
 		<< 0 << s << c << 0 << arma::endr
 		<< 0 << 0 << 0 << 1;
 	mat scale(4, 4);
-	scale << 0.15*0.15 << 0 << 0 << 0 << arma::endr
-		<< 0 << 0.15*0.15 << 0 << 0 << arma::endr
-		<< 0 << 0 << 0.15*0.15 << 0 << arma::endr
+	scale << 0.1 << 0 << 0 << 0 << arma::endr
+		<< 0 << 0.1 << 0 << 0 << arma::endr
+		<< 0 << 0 << 0.1 << 0 << arma::endr
 		<< 0 << 0 << 0 << 1;
 	mat translation(4, 4);
 	translation << 1 << 0 << 0 << 0 << arma::endr
@@ -102,7 +113,17 @@ void Motion::initFeaturePoints() {
 		<< 0 << 0 << -1.5 << 0 << arma::endr
 		<< 0 << 0 << 0 << 1;
 
-	mat transform = rotate * scale * translation;
+	mat transform = scale; // rotate * scale * translation;
+
+	baseFeaturePoints.clear();
+	for (vec v : base) {
+		vec v3 = scale * v;
+		vec v2(3);
+		for (int i = 0; i < 3; i++) {
+			v2(i) = v3(i);
+		}
+		baseFeaturePoints.push_back(v2);
+	}
 
 	// Create an hMatrix from this
 	hMatrix transf;
@@ -111,12 +132,6 @@ void Motion::initFeaturePoints() {
 			transf.m[i][j] = transform(i, j);
 		}
 	}
-	/*
-	for (int i = 0; i < 4; i++) {
-	vec v = base[i];
-	v = rotate * scale * trans * v;
-	base[i] = v;
-	}*/
 
 	// Get the four feature points at each of the control positions.
 	hMatrix hm0 = controlPositions[0].dualQuaternionToHomogeneousMatrix();	// Start with the first position
@@ -140,8 +155,9 @@ void Motion::initFeaturePoints() {
 	}
 }
 
-
-
+/*
+	Update the screw motion between control points
+*/
 void Motion::updateScrewMotion() {
 	screwPositions.clear();
 
@@ -180,6 +196,9 @@ void Motion::updateBezierMotion() {
 	glutPostRedisplay();
 }
 
+/*
+	Update the feature curves using the appropriate variational subdivision
+*/
 void Motion::updateVariationalCurve() {
 	if (featurePoints.empty()) return;
 
@@ -207,6 +226,10 @@ void Motion::updateVariationalCurve() {
 
 }
 
+/*
+	Update the vector of motion positions using the variational feature curves and singular 
+	value decomposition to create a rigid body transformation, as described in Arun et al.
+*/
 void Motion::updateVariationalMotion() {
 	variationalPositions.clear();
 
@@ -219,10 +242,9 @@ void Motion::updateVariationalMotion() {
 		}
 		positions.push_back(position);
 	}
-
 	
 	// Begin with the first position, find the barycenter 
-	vector<vec> X = featurePoints[0];
+	vector<vec> X = baseFeaturePoints;
 	vec xBar = barycenter(X);
 
 	// Create a local coordinate system
@@ -232,6 +254,7 @@ void Motion::updateVariationalMotion() {
 		Xprime.push_back(v);
 	}
 
+	/*
 	// Calculate the special points
 	list<cx_vec> specialX = calculateSpecialPoints(X);
 	vector<cx_vec> specialXvec;
@@ -244,32 +267,16 @@ void Motion::updateVariationalMotion() {
 		v -= cxXBar;
 		specialXvec.push_back(v);
 	}
+	*/
 
-	// For every position after the first
-	for (int i = 0; i < positions.size(); i++) {
+	// For every position 
+	for (int pos = 0; pos < positions.size(); pos++) {		
 		// Get the position, find the barycenter.
-		vector<vec> Y = positions[i]; 
+		vector<vec> Y = positions[pos]; 
 		vec yBar = barycenter(Y);
 		
 		// Try just getting a translation??
 		vec tra = yBar - xBar;
-
-		Quaternion qQ = controlPositions[0].GetReal();
-		//cout<<"Q="<<Q<<endl;
-		Quaternion qR = controlPositions[0].GetDual();
-		//cout<<"R="<<R<<endl;
-		Quaternion qT = (qR*qQ.Conjugate() - qQ*qR.Conjugate()) / qQ.Modulus(); // recover translation component
-		
-		vec tra2(3);
-		for (int i = 0; i < 3; i++) {
-			tra2(i) = qT.q[i];
-		}
-		// Translation from control position 0 to the current point
-		double r[4] = { 0.0, 0.0, 0.0, 1.0 };
-		Quaternion real(r);
-		double tr[3] = { tra(0) + tra2(0), tra(1) + tra2(1), tra(2) + tra2(2) };
-		hPoint trans(tr);
-		DualQuaternion dq(real, trans);
 
 		// Create a local coordinate system
 		vector<vec> Yprime;
@@ -278,6 +285,48 @@ void Motion::updateVariationalMotion() {
 			Yprime.push_back(v);
 		}
 
+		// Create the 3x3 matrix H
+		mat H = zeros<mat>(3, 3);
+		for (int i = 0; i < Y.size(); i++) {
+			for (int j = 0; j < 3; j++) {
+				for (int k = 0; k < 3; k++) {
+					H(j, k) += X[i](j) * Y[i](k);
+				}
+			}
+		}
+
+		// Get the singular value decomposition of H
+		mat U;
+		vec s;
+		mat V;
+		svd(U, s, V, H);
+
+		// Calculate the rotation matrix and the translation vector
+		mat R = V * U.t();
+		vec t = yBar - R * xBar;
+
+		// Convert the rotation matrix and translation vector into homogenous matrices
+		hMatrix rotation;
+		hMatrix translation;
+		for (int i = 0; i < 4; i++) {
+			rotation.m[i][i] = 1.0f;
+			translation.m[i][i] = 1.0f;
+		}
+		for (int i = 0; i < 3; i++) {
+			for (int j = 0; j < 3; j++) {
+				rotation.m[i][j] = R(i, j);
+			}
+			translation.m[i][3] = t(i);
+		}
+
+		// Get the transformation as the product of the translation and rotation vectors
+		hMatrix transform = translation * rotation;
+		variationalPositions.push_back(transform.transpose());
+
+
+		// This was the attempt at using the method described by Hofer et al.
+
+		/*
 		// Begin calculating the rotation matrix R
 		double Sxx = S(0, 0, Xprime, Yprime);
 		double Sxy = S(0, 1, Xprime, Yprime);
@@ -291,10 +340,10 @@ void Motion::updateVariationalMotion() {
 
 		// M is this (symmetric) matrix
 		mat M = zeros(4, 4);
-		M << Sxx + Syy + Szz << Syz - Szy << Szx - Sxz << Sxy - Syz << arma::endr
+		M << Sxx + Syy + Szz << Syz - Szy << Szx - Sxz << Sxy - Syx << arma::endr
 			<< Syz - Szy << Sxx - Syy - Szz << Sxy + Syx << Szx + Sxz << arma::endr
 			<< Szx - Sxz << Sxy + Syx << -Sxx + Syy - Szz << Syz + Szy << arma::endr
-			<< Sxy - Syz << Szx + Sxz << Syz + Szy << -Sxx - Syy + Szz;
+			<< Sxy - Syx << Szx + Sxz << Syz + Szy << -Sxx - Syy + Szz;
 
 		// Find the maximal eigenvalue and corresponding unit eigenvector
 		vec eigVals;
@@ -303,41 +352,49 @@ void Motion::updateVariationalMotion() {
 
 		// A is the rotation unit quaternion
 		vec a = eigVecs.col(3);
-
+		
 		// Create the rotation matrix R
 		mat R = zeros(3, 3);
 		double a0 = a(0);
 		double a1 = a(1);
 		double a2 = a(2);
 		double a3 = a(3);
+		double r[4] = { a0, a1, a2, a3 };
+
+		//double r[4] = {0.0f, 0.0f, 0.0f, 1.0f };
 		R << a0*a0 + a1*a1 - a2*a2 - a3*a3 << 2 * (a1*a2 + a0*a3) << 2 * (a1*a3 - a0*a2) << arma::endr
-			<< 2 * (a1*a2 - a0*a3) << a0*a0 - a1*a1 + a2*a2 - a3*a3 << 2 * (a2*a3 + a0*a1) << arma::endr
-			<< 2 * (a1*a3 + a0*a2) << 2 * (a2*a3 - a0*a1) << a0*a0 - a1*a1 - a2*a2 - a3*a3;
+			<< 2 * (a1*a2 + a0*a3) << a0*a0 - a1*a1 + a2*a2 - a3*a3 << 2 * (a2*a3 + a0*a1) << arma::endr
+			<< 2 * (a1*a3 - a0*a2) << 2 * (a2*a3 + a0*a1) << a0*a0 - a1*a1 - a2*a2 + a3*a3;
+
+		// Also a rotation quaternion
+		Quaternion rotQ(r);
 
 		// Get the translation vector from x to y
 		vec t = yBar - R * xBar;
-		
-		// Make a translation matrix
-		mat translation = zeros(4, 4);
-		translation << 1 << 0 << 0 << t(0) << arma::endr
-			<< 0 << 1 << 0 << t(1) << arma::endr
-			<< 0 << 0 << 1 << t(2) << arma::endr
-			<< 0 << 0 << 0 << 1;
-		/*
-		// Use the rotation quaternion and the translation vectoro to build a Dual Quaternion
-		double r[4] = { a(0), a(1), a(2), a(3) };
-		//double r[4] = { 0.0, 0.0, 0.0, 1.0 };
-		Quaternion real(r);
-		double tr[3] = { t(0), t(1), t(2) };
-		hPoint trans(tr);
-		DualQuaternion dq(real, trans);
 
-		DualQuaternion dq2 = controlPositions[0] * dq;
-		// Convert this to an hMatrix and add it to the list
-		hMatrix hm1 = dq.dualQuaternionToHomogeneousMatrix();*/
-		variationalPositions.push_back(dq.dualQuaternionToHomogeneousMatrix().transpose());
+		// Translation from control position 0 to the current point
+		double r2[4] = {qQ.q[0], qQ.q[1], qQ.q[2], qQ.q[3] };
+		Quaternion real2(r2);
+		double tr[3] = { tra(0), tra(1), tra(2)};
+		double tr2[3] = { t(0), t(1), t(2) };
+		hPoint trans(tr);
+		hPoint trans2(tr2);
+
+		
+		// Make a homogenous matrix from the rotation matrix and the translation vector
+		double zeroV[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+		Quaternion noRot(zeroV);
+		DualQuaternion dq(noRot, trans);
+
+		//Use the rotation quaternion and the translation vector to build a Dual Quaternion
+		//double tr[3] = { t(0), t(1), t(2) };
+		hPoint trans(tr);
+		DualQuaternion dq(rotQ, trans2);
+
+		// The translation needs to be rotated
+		variationalPositions.push_back(dq.dualQuaternionToHomogeneousMatrix().transpose()); 
+		*/
 	}
-	
 }
 
 
@@ -384,6 +441,9 @@ void Motion::drawScrewMotion() {
 	}
 }
 
+/*
+	Draw the bezier motion
+*/
 void Motion::drawBezierMotion() {
 	for (hMatrix interp : bezierPositions) {
 		// Convert to OpenGL matrix
@@ -399,6 +459,9 @@ void Motion::drawBezierMotion() {
 	}
 }
 
+/*
+	Draw the variational feature curves
+*/
 void Motion::drawVariationalCurve() {
 	glLineWidth(1.0f);
 	glColor3f(1.0f, 1.0f, 1.0f);
@@ -411,6 +474,9 @@ void Motion::drawVariationalCurve() {
 	}
 }
 
+/*
+	Draw the variational motion
+*/
 void Motion::drawVariationalMotion() {
 	for (hMatrix interp : variationalPositions) {
 		// Convert to OpenGL matrix
@@ -427,9 +493,9 @@ void Motion::drawVariationalMotion() {
 
 }
 
-
-
-
+/*
+	Helper method for deCasteljau algorithm to create bezier motion
+*/
 DualQuaternion Motion::deCasteljau(double t) {
 	vector<DualQuaternion> dqs;
 	int n = controlPositions.size() - 1;
@@ -447,22 +513,29 @@ DualQuaternion Motion::deCasteljau(double t) {
 	return dqs[0];
 }
 
-
-
-
-
+/*
+	Set the number of divisions for screw motion
+*/
 void Motion::setScrewDivisions(int divisions) { 
 	if (screwDivisions != divisions) {
 		screwDivisions = divisions;
 		updateScrewMotion();
 	}
 }
+
+/*
+	Set the number of divisions for bezier motion
+*/
 void Motion::setBezierDivisions(int divisions) {
 	if (bezierDivisions != divisions) {
 		bezierDivisions = divisions;
 		updateBezierMotion();
 	}
 }
+
+/*
+	Set the number of iterations for variational subdivision
+*/
 void Motion::setVariationalIterations(int iters) {
 	if (variationalIterations != iters) {
 		variationalIterations = iters;
@@ -471,6 +544,9 @@ void Motion::setVariationalIterations(int iters) {
 	}
 }
 
+/*
+	Toggle between interpolary and approximational variational subdivision
+*/
 void Motion::setApproximateVariational(int approx) {
 	if (approximateVariational != approx) {
 		approximateVariational = approx;
@@ -479,6 +555,9 @@ void Motion::setApproximateVariational(int approx) {
 	}
 }
 
+/*
+	Set the weight of a feature point
+*/
 void Motion::setVariationalWeights(int id, double weight) {
 	if (variationalWeights.size() > id) {
 		variationalWeights[id] = weight;
@@ -487,6 +566,9 @@ void Motion::setVariationalWeights(int id, double weight) {
 	}
 }
 
+/*
+	Set the weight of inserted points
+*/
 void Motion::setInsertedWeights(double weight) {
 	if (insertedWeight > weight + 0.0001 || insertedWeight < weight - 0.0001) {
 		insertedWeight = weight;
@@ -495,6 +577,9 @@ void Motion::setInsertedWeights(double weight) {
 	}
 }
 
+/*
+	Set the file name of the current control position file
+*/
 bool Motion::setFileName(string file) {
 	if (fileName.compare(file) != 0) {
 		fileName = file;
@@ -510,6 +595,9 @@ bool Motion::setFileName(string file) {
 	return false;
 }
 
+/*
+	Update all the curves and motions
+*/
 void Motion::updateAll() {
 	updateScrewMotion();
 	updateBezierMotion();
@@ -905,7 +993,7 @@ double Motion::S(int x, int y, const vector<vec>& X, const vector<vec>& Y) {
 }
 
 /*
-	Compute the S_,_ coefficients of the M matrix
+	Compute the S_,_ coefficients of the complex M matrix
 */
 cx_double Motion::S(int x, int y, const vector<cx_vec>& X, const vector<cx_vec>& Y) {
 	cx_double s(0.0f, 0.0f);

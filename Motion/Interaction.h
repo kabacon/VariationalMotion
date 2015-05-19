@@ -1,5 +1,5 @@
 /*
-	Matthew Fink, MEC 572, Spring 2015
+	Matthew Fink, MEC 572 Final Project, Spring 2015
 	Adapted from code provided by Prof. Anurag Purwar
 
 	Interaction.h - Defines the mouse and keyboard interactions with the GLUT window.

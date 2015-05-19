@@ -1,10 +1,11 @@
 /*
-	Matthew Fink, MEC 572, Spring 2015
+	Matthew Fink, MEC 572 Final Project, Spring 2015
 
 	This program implements a motion design algorithm using variational subdivision 
 	to generate feature curves, and registration to map rigid body transformations 
 	to the sets of feature curves. From the paper "From curve design algorithms to 
-	the design of rigid body motions" by Hofer et al.
+	the design of rigid body motions" by Hofer et al. The SVD method of registration 
+	is taken from Arun et al.
 */
 
 #pragma once
@@ -147,8 +148,10 @@ void updateGUI() {
 
 
 void init() {
-
+	
 	glClearColor(0.1, 0.1, 0.1, 0.1);
+	//glClearColor(1.0, 1.0, 1.0, 1.0);
+
 
 	GLUquadricObj *qobj = gluNewQuadric();
 	gluQuadricDrawStyle(qobj, GLU_FILL);
@@ -227,7 +230,7 @@ void display(void) {
 
 	static float BLUE[3] = { 0.1f, 0.1f, 1.0f };
 	static float blue_ambient[] = { 0.0f, 0.0f, 0.1f, 1.0f };
-	static float low_specular[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+	static float low_specular[] = { 0.2f, 0.2f, 0.5f, 1.0f };
 	glMaterialfv(GL_FRONT, GL_AMBIENT, blue_ambient);
 	glMaterialfv(GL_FRONT, GL_SPECULAR, low_specular);
 	glMaterialfv(GL_FRONT, GL_DIFFUSE, BLUE);
@@ -250,6 +253,10 @@ void display(void) {
 
 	static float emission[] = { 0.3f, 0.3f, 0.3f, 0.0f };
 	glMaterialfv(GL_FRONT, GL_EMISSION, emission);
+	//static float emission[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	//glMaterialfv(GL_FRONT, GL_EMISSION, emission);
+	//static float BLACK[3] = { 0.0f, 0.0f, 0.0f };
+	//glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, BLACK);
 	if (settings.showVariationalCurve)
 		m->drawVariationalCurve();
 
